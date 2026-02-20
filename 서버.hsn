@@ -1,0 +1,426 @@
+※ ═══════════════════════════════════════════════════════════
+※  CrownyOS 웹 게이트웨이 — 한선어 구현
+※  crownybus.com/이름 ↔ ctp://이름.crowny
+※  세계 최초 한선어 웹서버
+※ ═══════════════════════════════════════════════════════════
+
+가져오기 json, time, os, re
+http.server에서 가져오기 HTTPServer, BaseHTTPRequestHandler
+urllib.parse에서 가져오기 urlparse, parse_qs
+등록소에서 가져오기 CTP등록소, 이름규칙, 서비스종류
+
+버전 = "1.0.0-한선"
+포트 = 정수(os.environ.get("PORT", 8080))
+RNS = CTP등록소()
+
+
+※ ═══════════════════════════════════════════════════════════
+※ HTML 스타일 (초콜릿 테마)
+※ ═══════════════════════════════════════════════════════════
+
+스타일 = """
+:root{--bg:#1a1208;--bg2:#2c1e10;--card:#342518;--bd:#4e3428;--fg:#fff8f0;--dim:#a89080;--mute:#6b5b50;--gold:#d4a574;--amber:#e8b86d;--copper:#b87333;--up:#4ade80;--dn:#f87171}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:'Pretendard','Apple SD Gothic Neo',sans-serif;font-size:13px;min-height:100vh}
+.hd{background:var(--bg2);border-bottom:1px solid var(--bd);padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:20px;font-weight:700;color:var(--gold)}.logo span{color:var(--dim);font-size:12px;font-weight:400;margin-left:8px}
+.nav{display:flex;gap:6px}.nav a{padding:6px 14px;border-radius:6px;color:var(--dim);text-decoration:none;font-size:12px;border:1px solid transparent;transition:.2s}.nav a:hover,.nav a.on{color:var(--gold);border-color:var(--bd);background:var(--bg)}
+.main{max-width:1000px;margin:0 auto;padding:24px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:12px}
+.card h3{font-size:13px;color:var(--gold);margin-bottom:10px;font-weight:600}
+.mono{font-family:'D2Coding','Menlo',monospace}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px}
+.svc-card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;cursor:pointer;transition:.2s;text-decoration:none;color:var(--fg);display:block}
+.svc-card:hover{border-color:var(--gold);transform:translateY(-2px)}
+.svc-icon{font-size:28px;margin-bottom:6px}
+.svc-name{font-size:14px;font-weight:700;color:var(--gold)}
+.svc-desc{font-size:11px;color:var(--dim);margin-top:4px}
+.svc-addr{font-family:'D2Coding',monospace;font-size:10px;color:var(--mute);margin-top:6px;background:var(--bg);padding:3px 6px;border-radius:4px;display:inline-block}
+.btn{border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:12px;font-weight:600;transition:.2s;background:var(--gold);color:#1a1208}.btn:hover{background:var(--amber)}
+.inp{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;color:var(--fg);font-size:12px;width:100%}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;background:var(--bg);border:1px solid var(--bd);color:var(--dim);margin:2px}
+.hero{text-align:center;padding:40px 0 30px}
+.hero h1{font-size:28px;color:var(--gold);margin-bottom:8px}
+.hero p{color:var(--dim);font-size:14px}
+.stat-row{display:flex;gap:20px;justify-content:center;margin:20px 0}
+.stat-item{text-align:center}.stat-item .v{font-size:20px;font-weight:700;color:var(--amber);font-family:'D2Coding',monospace}.stat-item .l{font-size:10px;color:var(--mute);margin-top:2px}
+.footer{text-align:center;padding:30px;color:var(--mute);font-size:11px}
+.err{color:var(--dn)}.ok{color:var(--up)}
+select.inp{appearance:auto}
+"""
+
+네비 = """
+<div class="hd">
+  <a href="/" style="text-decoration:none"><div class="logo">🏛 CrownyOS <span>균형삼진 네트워크 — 한선어</span></div></a>
+  <div class="nav">
+    <a href="/">서비스</a>
+    <a href="/trading">트레이딩</a>
+    <a href="/rns">RNS</a>
+    <a href="/register">등록</a>
+  </div>
+</div>
+"""
+
+
+※ ═══════════════════════════════════════════════════════════
+※ 페이지 생성 함수들
+※ ═══════════════════════════════════════════════════════════
+
+함수 페이지(제목, 본문, 활성=""):
+    nav = 네비
+    만약 활성:
+        nav = nav.replace(f'href="/{활성}"', f'href="/{활성}" class="on"')
+    반환 f"""<!DOCTYPE html><html lang="ko"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{제목} — CrownyOS 한선어</title><style>{스타일}</style></head>
+<body>{nav}<div class="main">{본문}</div>
+<div class="footer">CrownyOS 균형삼진 컴퓨팅 — 한선어(HanSeon Language)로 구동<br>
+crownybus.com/이름 ↔ ctp://이름.crowny</div></body></html>"""
+
+
+함수 포탈페이지():
+    서비스목록 = RNS.전체목록()
+    통계 = RNS.통계()
+
+    카드들 = ""
+    각각 s 안에 서비스목록:
+        카드들 += f"""<a href="/{s['name']}" class="svc-card">
+<div class="svc-icon">{s['icon']}</div>
+<div class="svc-name">{s['title']}</div>
+<div class="svc-desc">{s['desc']}</div>
+<div style="margin-top:6px">
+  <span class="svc-addr">ctp://{s['name']}.crowny</span>
+  <span class="tag">{s['service']}</span>
+  <span class="tag">{s['hits']}회</span>
+</div></a>"""
+
+    본문 = f"""
+<div class="hero">
+  <h1>🏛 CrownyOS 네트워크</h1>
+  <p>균형삼진 컴퓨팅 — 한선어(HanSeon)로 구동되는 CTP 서비스 포탈</p>
+  <div class="stat-row">
+    <div class="stat-item"><div class="v">{통계['records']}</div><div class="l">서비스</div></div>
+    <div class="stat-item"><div class="v">{통계['services']}</div><div class="l">타입</div></div>
+    <div class="stat-item"><div class="v">{통계['total_hits']}</div><div class="l">조회</div></div>
+  </div>
+  <div style="margin-top:8px"><span class="tag" style="border-color:var(--gold);color:var(--gold)">🇰🇷 한선어 v1.0 구동</span></div>
+</div>
+<div class="grid">{카드들}</div>
+"""
+    반환 페이지("포탈", 본문)
+
+
+함수 등록페이지(메시지=""):
+    옵션들 = "".join(f'<option value="{t}">{t}</option>' 각각 t 안에 서비스종류)
+    알림 = f'<div class="card" style="border-color:var(--gold)"><p>{메시지}</p></div>' 만약 메시지 아니면 ""
+
+    본문 = f"""
+<div class="hero" style="padding:20px 0">
+  <h1>📝 서비스 등록</h1>
+  <p>CTP 네트워크에 새 서비스를 등록하세요</p>
+</div>
+{알림}
+<div class="card">
+  <h3>새 서비스 등록</h3>
+  <form method="POST" action="/register" style="display:grid;gap:10px;max-width:500px">
+    <div>
+      <label style="font-size:11px;color:var(--dim);display:block;margin-bottom:4px">서비스 이름 (영어, 숫자, _, -)</label>
+      <div style="display:flex;align-items:center;gap:4px">
+        <span style="color:var(--mute);font-size:12px;font-family:monospace">ctp://</span>
+        <input name="name" class="inp mono" placeholder="my-service" pattern="[a-zA-Z][a-zA-Z0-9_-]*" required style="flex:1">
+        <span style="color:var(--mute);font-size:12px;font-family:monospace">.crowny</span>
+      </div>
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--dim);display:block;margin-bottom:4px">표시 이름</label>
+      <input name="title" class="inp" placeholder="My Service">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--dim);display:block;margin-bottom:4px">설명</label>
+      <input name="desc" class="inp" placeholder="서비스 설명...">
+    </div>
+    <div style="display:flex;gap:10px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:var(--dim);display:block;margin-bottom:4px">서비스 타입</label>
+        <select name="service" class="inp">{옵션들}</select>
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:var(--dim);display:block;margin-bottom:4px">아이콘 (이모지)</label>
+        <input name="icon" class="inp" placeholder="📦" value="📦" maxlength="4">
+      </div>
+    </div>
+    <button type="submit" class="btn" style="margin-top:6px">등록</button>
+  </form>
+</div>
+<div class="card">
+  <h3>이름 규칙</h3>
+  <div style="font-size:11px;color:var(--dim);line-height:1.8">
+    • 첫 글자: 영어 (a-z, A-Z)<br>
+    • 나머지: 영어, 숫자, _, - (최대 63자)<br>
+    • 등록 후: <code class="mono" style="background:var(--bg);padding:2px 6px;border-radius:3px">ctp://이름.crowny</code> ↔
+      <code class="mono" style="background:var(--bg);padding:2px 6px;border-radius:3px">crownybus.com/이름</code>
+  </div>
+</div>
+"""
+    반환 페이지("서비스 등록", 본문, "register")
+
+
+함수 RNS페이지():
+    서비스목록 = RNS.전체목록()
+    통계 = RNS.통계()
+
+    행들 = ""
+    각각 s 안에 서비스목록:
+        행들 += f"""<tr>
+<td>{s['icon']} {s['title']}</td>
+<td class="mono" style="color:var(--gold)">ctp://{s['name']}.crowny</td>
+<td class="mono">crownybus.com/{s['name']}</td>
+<td><span class="tag">{s['service']}</span></td>
+<td class="mono">{s['hits']}</td></tr>"""
+
+    본문 = f"""
+<div class="hero" style="padding:20px 0">
+  <h1>🌐 RNS — Resolve Name Service</h1>
+  <p>CTP 프로토콜 이름 해석 서비스 ({통계['records']}레코드) — 한선어 구동</p>
+</div>
+<div class="card">
+  <h3>등록된 서비스</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr>
+      <th style="text-align:left;padding:8px 6px;color:var(--mute);border-bottom:1px solid var(--bd)">이름</th>
+      <th style="text-align:left;padding:8px 6px;color:var(--mute);border-bottom:1px solid var(--bd)">CTP 주소</th>
+      <th style="text-align:left;padding:8px 6px;color:var(--mute);border-bottom:1px solid var(--bd)">웹 주소</th>
+      <th style="text-align:left;padding:8px 6px;color:var(--mute);border-bottom:1px solid var(--bd)">타입</th>
+      <th style="text-align:left;padding:8px 6px;color:var(--mute);border-bottom:1px solid var(--bd)">조회</th>
+    </tr></thead>
+    <tbody>{행들}</tbody>
+  </table>
+</div>
+<div class="card">
+  <h3>📡 CTP 프로토콜</h3>
+  <div style="font-size:11px;color:var(--dim);line-height:1.8">
+    <b style="color:var(--gold)">CTP (Crowny Transfer Protocol)</b> — 균형삼진 네트워크 전용 프로토콜<br><br>
+    내부망: <code class="mono" style="background:var(--bg);padding:2px 6px;border-radius:3px">ctp://서비스이름.crowny</code><br>
+    외부웹: <code class="mono" style="background:var(--bg);padding:2px 6px;border-radius:3px">https://crownybus.com/서비스이름</code><br><br>
+    크라우니 브라우저에서는 ctp:// 주소로 직접 접속,<br>
+    일반 브라우저에서는 crownybus.com을 통해 RNS가 자동 라우팅합니다.
+  </div>
+</div>
+"""
+    반환 페이지("RNS", 본문, "rns")
+
+
+함수 서비스페이지(이름, 레코드):
+    본문 = f"""
+<div class="hero" style="padding:20px 0">
+  <div style="font-size:48px;margin-bottom:8px">{레코드.get('icon','📦')}</div>
+  <h1>{레코드.get('title', 이름)}</h1>
+  <p>{레코드.get('desc', '')}</p>
+</div>
+<div class="card">
+  <h3>서비스 정보</h3>
+  <table style="font-size:12px;line-height:2.2">
+    <tr><td style="color:var(--mute);padding-right:20px">CTP 주소</td>
+        <td class="mono" style="color:var(--gold)">ctp://{이름}.crowny</td></tr>
+    <tr><td style="color:var(--mute)">웹 주소</td>
+        <td class="mono">crownybus.com/{이름}</td></tr>
+    <tr><td style="color:var(--mute)">서비스 타입</td>
+        <td><span class="tag">{레코드.get('service','web')}</span></td></tr>
+    <tr><td style="color:var(--mute)">로컬 포트</td>
+        <td class="mono">{레코드.get('local_port', '—')}</td></tr>
+    <tr><td style="color:var(--mute)">조회 수</td>
+        <td>{레코드.get('hits', 0)}회</td></tr>
+  </table>
+</div>
+<div class="card">
+  <h3>접속 방법</h3>
+  <div style="font-size:12px;line-height:2;color:var(--dim)">
+    <b style="color:var(--fg)">크라우니 브라우저:</b>
+    <code class="mono" style="background:var(--bg);padding:2px 8px;border-radius:4px;color:var(--gold)">ctp://{이름}.crowny</code><br>
+    <b style="color:var(--fg)">로컬 네트워크:</b>
+    <code class="mono" style="background:var(--bg);padding:2px 8px;border-radius:4px">http://localhost:{레코드.get('local_port', '?')}</code><br>
+    <b style="color:var(--fg)">공개 웹:</b>
+    <code class="mono" style="background:var(--bg);padding:2px 8px;border-radius:4px">https://crownybus.com/{이름}</code>
+  </div>
+</div>
+<div style="text-align:center;margin-top:16px">
+  <a href="/" class="btn" style="text-decoration:none">← 서비스 목록</a>
+</div>
+"""
+    반환 페이지(레코드.get("title", 이름), 본문)
+
+
+함수 미등록페이지(이름):
+    본문 = f"""
+<div class="hero">
+  <div style="font-size:48px;margin-bottom:8px">❓</div>
+  <h1>ctp://{이름}.crowny</h1>
+  <p style="color:var(--dn)">등록되지 않은 서비스입니다</p>
+</div>
+<div style="text-align:center;margin-top:20px">
+  <a href="/register" class="btn" style="text-decoration:none;margin-right:10px">서비스 등록</a>
+  <a href="/" class="btn" style="text-decoration:none;background:var(--bg);color:var(--gold);border:1px solid var(--bd)">서비스 목록</a>
+</div>
+"""
+    반환 페이지("미등록", 본문)
+
+
+※ ═══════════════════════════════════════════════════════════
+※ HTTP 핸들러
+※ ═══════════════════════════════════════════════════════════
+
+클래스 핸들러(BaseHTTPRequestHandler):
+
+    함수 log_message(자기, *a):
+        전달
+
+    함수 _html(자기, html, code=200):
+        본문 = html.encode("utf-8")
+        자기.send_response(code)
+        자기.send_header("Content-Type", "text/html; charset=utf-8")
+        자기.send_header("Access-Control-Allow-Origin", "*")
+        자기.end_headers()
+        자기.wfile.write(본문)
+
+    함수 _json(자기, 자료, code=200):
+        본문 = json.dumps(자료, ensure_ascii=거짓, default=문자열).encode("utf-8")
+        자기.send_response(code)
+        자기.send_header("Content-Type", "application/json; charset=utf-8")
+        자기.send_header("Access-Control-Allow-Origin", "*")
+        자기.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        자기.send_header("Access-Control-Allow-Headers", "Content-Type")
+        자기.end_headers()
+        자기.wfile.write(본문)
+
+    함수 do_OPTIONS(자기):
+        자기.send_response(200)
+        자기.send_header("Access-Control-Allow-Origin", "*")
+        자기.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        자기.send_header("Access-Control-Allow-Headers", "Content-Type")
+        자기.end_headers()
+
+    함수 do_GET(자기):
+        분석결과 = urlparse(자기.path)
+        경로 = 분석결과.path.rstrip("/") 또는 "/"
+
+        // 정적 페이지
+        만약 경로 == "/":
+            자기._html(포탈페이지())
+        아니면만약 경로 == "/register":
+            자기._html(등록페이지())
+        아니면만약 경로 == "/rns":
+            자기._html(RNS페이지())
+        아니면만약 경로 == "/health":
+            자기._json({"status": "ok", "version": 버전, "engine": "한선어", "records": 길이(RNS.레코드)})
+        아니면만약 경로 == "/favicon.ico":
+            자기.send_response(204)
+            자기.end_headers()
+
+        // API
+        아니면만약 경로 == "/api/rns/list":
+            자기._json(RNS.전체목록())
+        아니면만약 경로 == "/api/rns/stats":
+            자기._json(RNS.통계())
+        아니면만약 경로.startswith("/api/rns/resolve/"):
+            이름 = 경로.split("/")[-1]
+            자기._json(RNS.해석(이름))
+        아니면만약 경로.startswith("/api/rns/validate/"):
+            이름 = 경로.split("/")[-1]
+            성공, 오류 = RNS.이름검증(이름)
+            자기._json({"valid": 성공, "error": 오류})
+
+        // CTP 라우팅: /xxx → ctp://xxx.crowny
+        아니면:
+            이름 = 경로.lstrip("/").split("/")[0].lower()
+            만약 이름 그리고 이름규칙.match(이름):
+                레코드 = RNS.해석(이름)
+                만약 "error" 아닌 안에 레코드:
+                    자기._html(서비스페이지(이름, 레코드))
+                아니면:
+                    자기._html(미등록페이지(이름), 404)
+            아니면:
+                자기._json({"error": "Not Found"}, 404)
+
+    함수 do_POST(자기):
+        분석결과 = urlparse(자기.path)
+        경로 = 분석결과.path.rstrip("/") 또는 "/"
+        길이값 = 정수(자기.headers.get("Content-Length", 0))
+        원본 = 자기.rfile.read(길이값) 만약 길이값 아니면 b""
+
+        만약 경로 == "/register":
+            // HTML 폼 POST
+            urllib.parse에서 가져오기 parse_qs ~로 pqs
+            본문 = pqs(원본.decode("utf-8"))
+            이름 = 본문.get("name", [""])[0].strip().lower()
+            서비스 = 본문.get("service", ["web"])[0]
+            제목 = 본문.get("title", [""])[0]
+            설명 = 본문.get("desc", [""])[0]
+            아이콘 = 본문.get("icon", ["📦"])[0]
+
+            결과 = RNS.등록(이름, 서비스, 제목, 설명, 아이콘)
+            만약 "error" 안에 결과:
+                자기._html(등록페이지(f'<span class="err">❌ {결과["error"]}</span>'))
+            아니면:
+                자기._html(등록페이지(
+                    f'<span class="ok">✅ 등록 완료!</span> '
+                    f'<code class="mono">ctp://{이름}.crowny</code> ↔ '
+                    f'<code class="mono">crownybus.com/{이름}</code>'))
+
+        아니면만약 경로 == "/api/rns/register":
+            // JSON API
+            시도:
+                본문 = json.loads(원본)
+            예외:
+                자기._json({"error": "JSON 파싱 오류"}, 400)
+                반환
+            결과 = RNS.등록(
+                본문.get("name", ""),
+                본문.get("service", "web"),
+                본문.get("title", ""),
+                본문.get("desc", ""),
+                본문.get("icon", "📦"),
+                본문.get("owner", "api"),
+            )
+            자기._json(결과, 200 만약 "ok" 안에 결과 아니면 400)
+
+        아니면만약 경로 == "/api/rns/delete":
+            시도:
+                본문 = json.loads(원본)
+            예외:
+                자기._json({"error": "JSON 파싱 오류"}, 400)
+                반환
+            자기._json(RNS.삭제(본문.get("name", ""), 본문.get("owner", "")))
+
+        아니면:
+            자기._json({"error": "Not Found"}, 404)
+
+
+※ ═══════════════════════════════════════════════════════════
+※ 메인
+※ ═══════════════════════════════════════════════════════════
+
+함수 메인():
+    서버 = HTTPServer(("0.0.0.0", 포트), 핸들러)
+    통계 = RNS.통계()
+    출력(f"""
+╔══════════════════════════════════════════════════════════════╗
+║  🏛 CrownyOS 웹 게이트웨이 v{버전}                      ║
+║  🇰🇷 한선어(HanSeon Language)로 구동                          ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  웹:      http://0.0.0.0:{포트}                              ║
+║  도메인:  crownybus.com                                      ║
+║  프로토콜: CTP (Crowny Transfer Protocol)                    ║
+║  엔진:    한선어 인터프리터 v1.0                              ║
+║  RNS:     {통계['records']}개 서비스 등록                                  ║
+║                                                              ║
+║  라우팅:                                                     ║
+║    crownybus.com/xxx → ctp://xxx.crowny                     ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+""")
+    서버.serve_forever()
+
+
+만약 __name__ == "__main__":
+    메인()

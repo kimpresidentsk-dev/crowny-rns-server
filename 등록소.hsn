@@ -1,0 +1,174 @@
+※ ═══════════════════════════════════════════════════
+※  CTP 이름등록소 — 한선어 구현
+※  ctp://이름.crowny ↔ crownybus.com/이름 매핑
+※ ═══════════════════════════════════════════════════
+
+가져오기 json, time, re, os
+pathlib에서 가져오기 Path
+
+이름규칙 = re.compile(r'^[a-zA-Z][a-zA-Z0-9_-]{0,62}$')
+
+서비스종류 = [
+    "mind", "db", "web", "chain", "dex", "p2p", "rns",
+    "trade", "ai", "motor", "lidar", "robot", "med", "gene",
+]
+
+자료폴더 = Path(os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "/tmp/crowny-rns"))
+
+
+클래스 CTP등록소:
+    ※ CTP 프로토콜 레지스트리
+    ※ ctp://이름.crowny ↔ crownybus.com/이름
+
+    함수 __init__(자기):
+        자기.레코드 = {}
+        자기.파일경로 = 자료폴더 / "rns_registry.json"
+        자료폴더.mkdir(parents=참, exist_ok=참)
+        자기._불러오기()
+        자기._기본등록()
+
+    함수 _불러오기(자기):
+        시도:
+            만약 자기.파일경로.exists():
+                자기.레코드 = json.loads(자기.파일경로.read_text("utf-8"))
+        예외:
+            자기.레코드 = {}
+
+    함수 저장(자기):
+        시도:
+            자기.파일경로.write_text(
+                json.dumps(자기.레코드, ensure_ascii=거짓, indent=2), "utf-8")
+        예외:
+            전달
+
+    함수 _기본등록(자기):
+        ※ 기본 서비스 시드
+        기본값 = {
+            "trading": {"service": "trade", "title": "크라우니트레이딩",
+                        "desc": "PVE v4.0 AI 에이전트 트레이딩", "icon": "🏛",
+                        "local_port": 7430},
+            "mind": {"service": "mind", "title": "CrownyMind",
+                     "desc": "균형삼진 인지 엔진 v3.1", "icon": "🧠",
+                     "local_port": 7420},
+            "db": {"service": "db", "title": "CrownyDB",
+                   "desc": "균형삼진 데이터베이스", "icon": "🗄",
+                   "local_port": 7420},
+            "dex": {"service": "dex", "title": "CROWNY DEX",
+                    "desc": "벡터형 균형3진 AMM", "icon": "💎",
+                    "local_port": 7422},
+            "rns": {"service": "rns", "title": "RNS",
+                    "desc": "Resolve Name Service", "icon": "🌐",
+                    "local_port": 7424},
+            "chain": {"service": "chain", "title": "CrownyChain",
+                      "desc": "균형삼진 블록체인", "icon": "⛓",
+                      "local_port": 7421},
+            "os": {"service": "web", "title": "CrownyOS",
+                   "desc": "균형삼진 컴퓨팅 플랫폼", "icon": "🖥",
+                   "local_port": 7420},
+        }
+        변경됨 = 거짓
+        각각 이름 안에 기본값:
+            만약 이름 아닌 안에 자기.레코드:
+                정보 = 기본값[이름]
+                자기.레코드[이름] = {
+                    **정보,
+                    "ctp": f"ctp://{이름}.crowny",
+                    "web": f"crownybus.com/{이름}",
+                    "owner": "system",
+                    "created": time.time(),
+                    "hits": 0,
+                }
+                변경됨 = 참
+        만약 변경됨:
+            자기.저장()
+
+    함수 이름검증(자기, 이름):
+        ※ 이름 유효성 검사 → (성공, 오류메시지)
+        만약 아닌 이름:
+            반환 거짓, "이름을 입력하세요"
+        만약 아닌 이름규칙.match(이름):
+            반환 거짓, "이름은 영어로 시작, 영어/숫자/_/- 만 가능 (최대 63자)"
+        만약 이름 안에 자기.레코드:
+            반환 거짓, f"'{이름}' 이미 등록됨"
+        예약어 = {"api", "admin", "static", "health", "register", "login", "favicon"}
+        만약 이름.lower() 안에 예약어:
+            반환 거짓, f"'{이름}' 은 예약어입니다"
+        반환 참, ""
+
+    함수 등록(자기, 이름, 서비스="web", 제목="", 설명="", 아이콘="📦", 소유자="user"):
+        ※ 새 이름 등록
+        성공, 오류 = 자기.이름검증(이름)
+        만약 아닌 성공:
+            반환 {"error": 오류}
+        만약 서비스 아닌 안에 서비스종류:
+            서비스 = "web"
+
+        레코드 = {
+            "service": 서비스,
+            "title": 제목 또는 이름,
+            "desc": 설명 또는 f"{이름}.crowny 서비스",
+            "icon": 아이콘,
+            "ctp": f"ctp://{이름}.crowny",
+            "web": f"crownybus.com/{이름}",
+            "local_port": 0,
+            "owner": 소유자,
+            "created": time.time(),
+            "hits": 0,
+        }
+        자기.레코드[이름] = 레코드
+        자기.저장()
+        반환 {"ok": 참, "name": 이름, "ctp": 레코드["ctp"], "web": 레코드["web"]}
+
+    함수 해석(자기, 이름):
+        ※ 이름 해석 — ctp://이름.crowny 또는 crownybus.com/이름
+        이름 = 이름.lower().strip()
+        만약 이름.startswith("ctp://"):
+            이름 = 이름[6:]
+        만약 이름.endswith(".crowny"):
+            이름 = 이름[:-7]
+        만약 "/" 안에 이름:
+            이름 = 이름.split("/")[-1]
+
+        레코드 = 자기.레코드.get(이름)
+        만약 아닌 레코드:
+            반환 {"error": f"'{이름}' 미등록", "name": 이름}
+        레코드["hits"] = 레코드.get("hits", 0) + 1
+        자기.저장()
+        반환 {**레코드, "name": 이름}
+
+    함수 전체목록(자기):
+        ※ 전체 목록
+        결과 = []
+        각각 이름 안에 정렬(자기.레코드.keys()):
+            레코드 = 자기.레코드[이름]
+            결과.append({
+                "name": 이름,
+                "ctp": 레코드.get("ctp", f"ctp://{이름}.crowny"),
+                "web": 레코드.get("web", f"crownybus.com/{이름}"),
+                "title": 레코드.get("title", 이름),
+                "desc": 레코드.get("desc", ""),
+                "icon": 레코드.get("icon", "📦"),
+                "service": 레코드.get("service", "web"),
+                "hits": 레코드.get("hits", 0),
+            })
+        반환 결과
+
+    함수 삭제(자기, 이름, 소유자=""):
+        만약 이름 아닌 안에 자기.레코드:
+            반환 {"error": f"'{이름}' 미등록"}
+        레코드 = 자기.레코드[이름]
+        만약 레코드.get("owner") == "system":
+            반환 {"error": "시스템 서비스는 삭제 불가"}
+        만약 소유자 그리고 레코드.get("owner") != 소유자:
+            반환 {"error": "권한 없음"}
+        삭제 자기.레코드[이름]
+        자기.저장()
+        반환 {"ok": 참, "deleted": 이름}
+
+    함수 통계(자기):
+        반환 {
+            "records": 길이(자기.레코드),
+            "services": 길이(집합(r.get("service", "web") 각각 r 안에 자기.레코드.values())),
+            "total_hits": 합계(r.get("hits", 0) 각각 r 안에 자기.레코드.values()),
+            "service_types": 서비스종류,
+        }
