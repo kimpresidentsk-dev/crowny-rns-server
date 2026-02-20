@@ -1,0 +1,2 @@
+# CrownyOS Web Gateway
+# 표준 라이브러리만 사용 — 추가 패키지 불필요
